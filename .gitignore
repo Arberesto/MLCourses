@@ -2,3 +2,4 @@ venv/
 venv/**
 *.txt
 **/*.odt
+**/.ipynb_checkpoints/**
