@@ -3,3 +3,5 @@ venv/**
 *.txt
 **/*.odt
 **/.ipynb_checkpoints/**
+*.zip
+*.tar
