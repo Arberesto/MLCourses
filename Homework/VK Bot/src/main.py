@@ -20,8 +20,8 @@ from sklearn.cluster import KMeans
 # Общая документация по vk api
 
 
-VK_TOKEN = '65c856a6743be09f0f89dce9d984872a7335059ded5827c7db65c3d65cb3c5a6f97acf93eb6c99f1707ed'
-GROUP_ID = 191130961
+VK_TOKEN = 'your_sweet_and_tender_token'
+GROUP_ID = 123456789
 # Напишите сюда свой токен и id группы.
 
 
