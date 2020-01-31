@@ -8,6 +8,8 @@ from vk_api.bot_longpoll import VkBotLongPoll, VkBotEventType
 from vk_api.upload import VkUpload
 
 import numpy as np
+import pandas as pd
+from time import time
 from skimage import io
 from skimage.io import imread
 from skimage import img_as_float
@@ -33,10 +35,7 @@ vk_session = None
 repeat_time = 0
 
 default_answer_text = "Cannot understard the meaning of your message, {1}. Use '{0}  help' if necessary".format(
-    original_name, original_human)
-
-
-# Напишите сюда свой токен и id группы.
+    current_name, current_human)
 
 
 def parse_args():
@@ -79,8 +78,20 @@ def answer_to(peer_id, answer_text=default_answer_text):
     print(answer)
     print()
 
+def num_of_image_colors(image):
+    # image in shape (X,3), where X = height*width
+    img_series = pd.DataFrame(np.around(image, decimals=5), columns=['red', 'green', 'blue'],
+                              dtype=object)
+    img_series['color'] = img_series['red'].map(str) + img_series['green'].map(str) + img_series[
+        'blue'].map(str)
+    # for example, 608874 colors in jpeg image,58859 in png image
+    unique_colors = len(img_series['color'].unique())
+    print("Unique colors in image: {0}\n".format(unique_colors))
+    return unique_colors
 
-def clusterize(message, uploader, photo=None, num_of_colors=8):
+
+def clusterize(message, uploader, num_of_colors=8):
+    time_start = time()
     attachments = message['attachments']
     if (num_of_colors > 1):
         if len(attachments) > 0:
@@ -104,64 +115,71 @@ def clusterize(message, uploader, photo=None, num_of_colors=8):
                 img_width = best_photo['width']
                 img_square = img_height * img_width
                 img_reshaped = np.ravel(img_float).reshape(img_square, 3)
-                kmeans = KMeans(n_clusters=num_of_colors, random_state=0, n_jobs = 4).fit(img_reshaped)
-                print(
-                    "cluster centers: {0}; shape = {1} ".format(kmeans.cluster_centers_, kmeans.cluster_centers_.shape))
-                labels = kmeans.cluster_centers_.reshape(1, num_of_colors, 3)
-                range1 = np.arange(num_of_colors)
-                img_final = img_reshaped.copy()
-                for i in range1:
-                    img_final[kmeans.labels_ == i] = labels[0][i]
-                img_final = np.ravel(img_final).reshape(img_height, img_width, 3)
-                # end working with image
-                io.imsave("test.png", img_final)  # сохраним изображение как test.png
+                unique_colors = num_of_image_colors(img_reshaped)
+                if num_of_colors <= unique_colors:
+                    kmeans = KMeans(n_clusters=num_of_colors, random_state=0, n_jobs=2).fit(img_reshaped)
+                    print(
+                        "cluster centers: {0}; shape = {1} ".format(kmeans.cluster_centers_,
+                                                                    kmeans.cluster_centers_.shape))
+                    labels = kmeans.cluster_centers_.reshape(1, num_of_colors, 3)
+                    range1 = np.arange(num_of_colors)
+                    img_final = img_reshaped.copy()
+                    for i in range1:
+                        img_final[kmeans.labels_ == i] = labels[0][i]
+                    img_final = np.ravel(img_final).reshape(img_height, img_width, 3)
+                    # end working with image
+                    io.imsave("test.jpg", img_final)  # сохраним изображение как test.png
 
-                uploaded_photos = uploader.photo_messages("./test.png")
-                # Можно загрузить несколько изображений сразу.
-                # Выглядит так же как и attachment которые мы получаем в сообщении
-                uploaded_photo = uploaded_photos[0]
-                # Но сейчас у нас только одно.
+                    uploaded_photos = uploader.photo_messages("./test.jpg")
+                    # Можно загрузить несколько изображений сразу.
+                    # Выглядит так же как и attachment которые мы получаем в сообщении
+                    uploaded_photo = uploaded_photos[0]
+                    # Но сейчас у нас только одно.
 
-                answer_with_img = {
-                    'peer_id': message['peer_id'],
-                    'random_id': random.randint(0, 100000),
-                }
-                photo_attachment = f'photo{uploaded_photo["owner_id"]}_{uploaded_photo["id"]}'
-                # <type><owner_id>_<media_id> Так должны выглядить вложенные изображения.
-                # Например photo100172_166443618
-                # Подробнее в https://vk.com/dev/messages.send
+                    answer_with_img = {
+                        'peer_id': message['peer_id'],
+                        'random_id': random.randint(0, 100000),
+                    }
+                    photo_attachment = f'photo{uploaded_photo["owner_id"]}_{uploaded_photo["id"]}'
+                    # <type><owner_id>_<media_id> Так должны выглядить вложенные изображения.
+                    # Например photo100172_166443618
+                    # Подробнее в https://vk.com/dev/messages.send
 
-                # Добавим изображение к ответу
-                answer_text = 'Image clusterized successfully'
-                answer_with_img.update({'attachment': photo_attachment})
-                answer_with_img.update({'message': answer_text})
-                vk_session.method('messages.send', answer_with_img)
+                    # Добавим изображение к ответу
+                    time_used = time() - time_start
+                    answer_text = 'Image clusterized successfully for {0} seconds'.format(time_used)
+                    answer_with_img.update({'attachment': photo_attachment})
+                    answer_with_img.update({'message': answer_text})
+                    vk_session.method('messages.send', answer_with_img)
+                else:
+                    answer_text = "Error: try to clusterize with {0} colors," \
+                                  " but image contain only {1} colors.".format(num_of_colors, unique_colors)
+                    answer_to(message['peer_id'], answer_text)
 
+            else:
+                answer_text = "But wait, you don't send me image to clusterize. " \
+                              "You should attach image to '{0} clusterize' command".format(original_name)
+                answer_to(message['peer_id'], answer_text)
         else:
-            answer_text = "But wait, you don't send me image to clusterize. " \
-                          "You should attach image to '{0} clusterize' command".format(original_name)
+            answer_text = "Error: trying to clusterize with {0} colors, but minimum is 2 colors. ".format(num_of_colors)
             answer_to(message['peer_id'], answer_text)
-    else:
-        answer_text = "Error: trying to clusterize with {1} colors. In 'clusterize X' X can't be less than 2 " \
-                      "and greater then number of colors in image".format(original_name, num_of_colors)
-        answer_to(message['peer_id'], answer_text)
-
+        time_used = time() - time_start
+        print("clusterize time - {0} sec".format(time_used))
 
 def ask_what(message):
     answer_text = "What do you want, {0} ?If you don't know what to say, use '{1} help'?".format(current_human,
-                                                                                                 current_name)
+                                                                                                     current_name)
     answer_to(message['peer_id'], answer_text)
-
 
 def get_help(message):
     help_message = "1. Type '{0} clusterize X' and attach image to message to get X-colored version of it.\n" \
-                   "By default X = 8 and can't be less than 2 and greater then number of colors in image" \
+                   "   If not defined, X = 8 and can't be less than 2 and greater than number of colors in image\n" \
+                   "   Warning: using X>100 may cause bot to crash \n" \
                    "2. Type '{0} help' to get that message again\n" \
-                   "3. If you just type '{0}', I get you this screen too. Be grateful, {1}".format(
+                   "3. If you just type '{0}', I get you advice. Be grateful, {1}".format(
         current_name, current_human)
     answer_text = 'Now you asking me for help? Okey then\n' + help_message
     answer_to(message['peer_id'], answer_text)
-
 
 def main():
     params = parse_args()
@@ -191,7 +209,7 @@ def main():
 
                         if (message_tokens[0] == 'clusterize'):
                             if (token_length > 1):
-                                time% clusterize(message, uploader, num_of_colors=int(message_tokens[1]))
+                                clusterize(message, uploader, num_of_colors=int(message_tokens[1]))
                             else:
                                 clusterize(message, uploader)
                         elif (message_tokens[0] == 'help'):
@@ -202,7 +220,6 @@ def main():
                         ask_what(message)
                 else:
                     answer_to(message['peer_id'])
-
 
 if __name__ == '__main__':
     while True:
