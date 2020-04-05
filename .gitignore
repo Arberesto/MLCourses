@@ -5,6 +5,12 @@ venv/**
 **/.ipynb_checkpoints/**
 *.zip
 *.tar
+*.wav
+*.mp3
+*.gz
 backup/
 backup/**
 **/Makefile
+Theory/**
+Theory/
+*.sh
